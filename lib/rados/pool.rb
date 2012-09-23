@@ -1,5 +1,7 @@
 module Rados
-  class PoolNotFound < Error ; end
+  class PoolError < Error ; end
+  class ErrorCreatingPool < PoolError ; end
+  class PoolNotFound < PoolError ; end
 
   class Pool
     attr_reader :name, :cluster
@@ -14,6 +16,10 @@ module Rados
       @cluster.pool_lookup(@name)
     rescue Rados::PoolNotFound
       nil
+    end
+
+    def destroy
+      @cluster.pool_delete(name)
     end
   end
 end

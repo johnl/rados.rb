@@ -1,5 +1,4 @@
 module Rados
-  class ErrorCreatingPool < Error ; end
 
   class PoolCollection
     def initialize(cluster)
@@ -41,6 +40,10 @@ module Rados
       end
       @cluster.pool_create(name)
       find(name)
+    end
+
+    def destroy(name)
+      @cluster.pool_delete(name)
     end
   end
 end

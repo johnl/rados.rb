@@ -23,7 +23,7 @@ describe Rados::PoolCollection do
       @new_pool_name = "ruby_rados_test_#{rand(0xfffff)}"
     end
     after(:all) do
-      # FIXME: delete pool
+      @cluster.pool_delete(@new_pool_name)
     end
 
     it "should return a Pool instance for the newly created pool" do
@@ -37,5 +37,24 @@ describe Rados::PoolCollection do
     it "should raise an error if the pool already exists" do
       lambda { @pools.create(@new_pool_name) }.should raise_error(Rados::ErrorCreatingPool)
     end
+  end
+
+  describe "#destroy" do
+    before(:all) do
+      @new_pool_name = "ruby_rados_test_#{rand(0xfffff)}"
+      @cluster.pool_create(@new_pool_name)
+    end
+
+    it "should return true if the pool was destroyed" do
+      @pools.destroy(@new_pool_name).should == true
+      @pools.find(@new_pool_name).should == nil
+    end
+
+    it "should raise an error if the pool doesn't exist" do
+      lambda { 
+        @pools.destroy("this_pool_should_not_exist")
+      }.should raise_error(Rados::PoolNotFound)
+    end
+
   end
 end

@@ -53,6 +53,27 @@ describe Rados::Cluster do
     end
   end
 
+  describe "#pool_delete" do
+    before(:all) do
+      @new_pool_name = "ruby_rados_test_#{rand(0xfffff)}"
+    end
+
+    it "should raise a type error when given a non-string object" do
+      lambda {
+        @cluster.pool_delete(:some_symbol)
+      }.should raise_error(TypeError)
+    end
+    it "should return true when the pool is deleted" do
+      @cluster.pool_create(@new_pool_name)
+      @cluster.pool_delete(@new_pool_name).should == true
+    end
+    it "should raise an error if the pool doesn't exist" do
+      lambda {
+        @cluster.pool_delete(@new_pool_name)
+      }.should raise_error(Rados::PoolNotFound)
+    end
+  end
+
   describe "stats" do
     before(:all) do
       @stats = @cluster.stats
