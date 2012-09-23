@@ -1,3 +1,4 @@
 tmp/
 ceph.conf
 ceph.keyring
+*.so

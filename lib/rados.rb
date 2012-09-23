@@ -3,4 +3,5 @@ module Rados
 end
 
 require 'rados/rados'
+require 'rados/pool'
 require 'rados/cluster'

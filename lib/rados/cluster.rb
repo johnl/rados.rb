@@ -7,5 +7,11 @@ module Rados
       initialize_ext
       options
     end
+
+    def pools
+      pool_list.collect do |name|
+        Pool.new(:name => name, :cluster => self)
+      end
+    end
   end
 end
