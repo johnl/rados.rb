@@ -117,9 +117,30 @@ static VALUE rb_rados_cluster_pool_list(VALUE self) {
 	return a;
 }
 
-static VALUE rb_rados_cluster_pool_lookup(VALUE self) {
+static VALUE rb_rados_cluster_pool_lookup(VALUE self, VALUE pool_name) {
 	GET_CLUSTER(self);
 	int64_t id;
+	Check_Type(pool_name, T_STRING);
+	char *cpool_name = StringValuePtr(pool_name);
+	id = rados_pool_lookup(*wrapper->cluster, cpool_name);
+	if (id == -2) {
+		rb_raise(rb_const_get(mRados, rb_intern("PoolNotFound")), "%s", cpool_name);
+	} else if (id < 0) {
+		rb_raise(cRadosError, "error looking up lookup pool '%s': %s", cpool_name, strerror(-id));
+	}
+	return INT2NUM(id);
+}
+
+static VALUE rb_rados_cluster_pool_create(VALUE self, VALUE pool_name) {
+	GET_CLUSTER(self);
+	int err;
+	Check_Type(pool_name, T_STRING);
+	char *cpool_name = StringValuePtr(pool_name);
+	err = rados_pool_create(*wrapper->cluster, cpool_name);
+	if (err < 0) {
+		rb_raise(cRadosError, "error creating pool '%s': %s", cpool_name, strerror(-err));
+	}
+	return Qtrue;
 }
 
 void init_rados_cluster() {
@@ -127,5 +148,7 @@ void init_rados_cluster() {
 	rb_define_alloc_func(cRadosCluster, allocate);
 	rb_define_private_method(cRadosCluster, "initialize_ext", initialize_ext, 0);
 	rb_define_method(cRadosCluster, "stats", rb_rados_cluster_stats, 0);
-	rb_define_private_method(cRadosCluster, "pool_list", rb_rados_cluster_pool_list, 0);
+	rb_define_method(cRadosCluster, "pool_list", rb_rados_cluster_pool_list, 0);
+	rb_define_method(cRadosCluster, "pool_lookup", rb_rados_cluster_pool_lookup, 1);
+	rb_define_method(cRadosCluster, "pool_create", rb_rados_cluster_pool_create, 1);
 }

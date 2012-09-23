@@ -6,20 +6,50 @@ describe Rados::Cluster do
     @cluster = Rados::Cluster.new
   end
 
+  describe "#pools" do
+    it "should return a PoolCollection" do
+      pools = @cluster.pools
+      pools.should be_a Rados::PoolCollection
+      pools.instance_eval("@cluster").should == @cluster
+    end
+  end
+
   describe "#pool_list" do
     it "should return an array of pool names" do
-      pl = @cluster.instance_eval("pool_list")
+      pl = @cluster.pool_list
       pl.should be_a Array
       pl.size.should > 2
       pl.should include("data")
     end
   end
 
-  describe "pools" do
-    it "should return an array of instances of Pool" do
-      pl = @cluster.pools
-      pl.size.should == @cluster.instance_eval("pool_list").size
-      pl.each { |p| p.should be_a Rados::Pool }
+  describe "#pool_lookup" do
+    before(:all) do
+      @pool_list = @cluster.pool_list
+    end
+    it "should return the id of an existing pool" do
+      @cluster.pool_lookup(@pool_list.first).should >= 0
+    end
+    it "should raise an exception if a pool doesn't exist" do
+      lambda {
+        @cluster.pool_lookup("this_pool_doesnt_exist")
+      }.should raise_error(Rados::Error)
+    end
+    it "should raise a type error when given a non-string object" do
+      lambda {
+        @cluster.pool_lookup(:some_symbol)
+      }.should raise_error(TypeError)
+    end
+  end
+
+  describe "#pool_create" do
+    it "should raise a type error when given a non-string object" do
+      lambda {
+        @cluster.pool_create(:some_symbol)
+      }.should raise_error(TypeError)
+    end
+    it "should return true when it can create a pool" do
+      @cluster.pool_create("ruby_rados_test").should == true
     end
   end
 

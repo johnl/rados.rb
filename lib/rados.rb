@@ -4,4 +4,5 @@ end
 
 require 'rados/rados'
 require 'rados/pool'
+require 'rados/pool_collection'
 require 'rados/cluster'
