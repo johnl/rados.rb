@@ -157,6 +157,41 @@ static VALUE rb_rados_cluster_pool_delete(VALUE self, VALUE pool_name) {
 	return Qtrue;
 }
 
+static VALUE rb_rados_cluster_pool_stat(VALUE self, VALUE pool_name) {
+	GET_CLUSTER(self);
+	int err;
+	Check_Type(pool_name, T_STRING);
+	char *cpool_name = StringValuePtr(pool_name);
+	rados_ioctx_t ioctx;
+	struct rados_pool_stat_t stats;
+	VALUE h;
+	err = rados_ioctx_create(*wrapper->cluster, cpool_name, &ioctx);
+	if (err < 0) {
+		rb_raise(rb_const_get(mRados, rb_intern("Error")), "error creating context for pool '%s': %s", cpool_name, strerror(-err));
+	}
+	err = rados_ioctx_pool_stat(ioctx, &stats);
+	if (err < 0) {
+		rados_ioctx_destroy(ioctx);
+		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error getting pool stats for pool '%s': %s", cpool_name, strerror(-err));
+	}
+	rados_ioctx_destroy(ioctx);
+
+	h = rb_hash_new();
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects")), INT2NUM(stats.num_objects));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_bytes")), INT2NUM(stats.num_bytes));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_kb")), INT2NUM(stats.num_kb));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_object_clones")), INT2NUM(stats.num_object_clones));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_object_copies")), INT2NUM(stats.num_object_copies));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects_missing_on_primary")), INT2NUM(stats.num_objects_missing_on_primary));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects_unfound")), INT2NUM(stats.num_objects_unfound));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects_degraded")), INT2NUM(stats.num_objects_degraded));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_rd")), INT2NUM(stats.num_rd));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_rd_kb")), INT2NUM(stats.num_rd_kb));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_wr")), INT2NUM(stats.num_wr));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_wr_kb")), INT2NUM(stats.num_wr_kb));
+	return h;
+}
+
 void init_rados_cluster() {
 	cRadosCluster = rb_define_class_under(mRados, "Cluster", rb_cObject);
 	rb_define_alloc_func(cRadosCluster, allocate);
@@ -166,4 +201,5 @@ void init_rados_cluster() {
 	rb_define_method(cRadosCluster, "pool_lookup", rb_rados_cluster_pool_lookup, 1);
 	rb_define_method(cRadosCluster, "pool_create", rb_rados_cluster_pool_create, 1);
 	rb_define_method(cRadosCluster, "pool_delete", rb_rados_cluster_pool_delete, 1);
+	rb_define_method(cRadosCluster, "pool_stat", rb_rados_cluster_pool_stat, 1);
 }

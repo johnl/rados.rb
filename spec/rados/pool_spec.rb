@@ -29,4 +29,5 @@ describe Rados::Pool do
       Rados::Pool.new(:name => "error").id.should be_nil
     end
   end
+
 end
