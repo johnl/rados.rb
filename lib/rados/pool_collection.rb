@@ -1,25 +1,27 @@
 module Rados
 
   class PoolCollection
+    include Enumerable
+
     def initialize(cluster)
       @cluster = cluster
     end
 
     def all
-      @cluster.pool_list.collect do |name|
-        Pool.new(:cluster => @cluster, :name => name)
-      end
+      entries
     end
 
-    def size
+    def count
       @cluster.pool_list.size
     end
 
     def each(&block)
-      all.each(&block);
+      @cluster.pool_list.collect do |name|
+        block.call(Pool.new(:cluster => @cluster, :name => name))
+      end
     end
 
-    def find(name)
+    def find_by_name(name)
       pool = Pool.new(:cluster => @cluster, :name => name)
       if pool.id.nil?
         nil
@@ -29,7 +31,7 @@ module Rados
     end
 
     def exists?(name)
-      find(name).nil? ? false : true
+      find_by_name(name).nil? ? false : true
     end
 
     def create(options)
@@ -39,7 +41,7 @@ module Rados
         raise Rados::ErrorCreatingPool, "pool #{name} already exists"
       end
       @cluster.pool_create(name)
-      find(name)
+      find_by_name(name)
     end
 
     def destroy(name)

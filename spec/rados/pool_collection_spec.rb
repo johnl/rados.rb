@@ -8,13 +8,27 @@ describe Rados::PoolCollection do
     @pool_list = @cluster.pool_list
   end
 
+  describe "#count" do
+    it "should return the number of pools that exist" do
+      @pools.count.should == @pool_list.size
+    end
+  end
+
   describe "#all" do
     it "should return an instance of Pool for each pool" do
-      @pool_list.size.should == @pools.size
+      @pools.all.size.should == @pool_list.size
       @pools.all.each do |pool|
         pool.should be_a Rados::Pool
         @pool_list.should include pool.name
       end
+    end
+  end
+
+  describe "#each" do
+    it "should execute the given block for each pool that exists" do
+      pl = []
+      @pools.each { |p| pl << p.name }
+      pl.should == @pool_list
     end
   end
 
@@ -27,7 +41,7 @@ describe Rados::PoolCollection do
     end
 
     it "should return a Pool instance for the newly created pool" do
-      pool = @pools.create(@new_pool_name)
+      pool = @pools.create(:name => @new_pool_name)
       pool.should be_a Rados::Pool
       pool.name.should == @new_pool_name
       pool.id.should_not be_nil
@@ -35,7 +49,7 @@ describe Rados::PoolCollection do
     end
 
     it "should raise an error if the pool already exists" do
-      lambda { @pools.create(@new_pool_name) }.should raise_error(Rados::ErrorCreatingPool)
+      lambda { @pools.create(:name => @new_pool_name) }.should raise_error(Rados::ErrorCreatingPool)
     end
   end
 
@@ -47,7 +61,7 @@ describe Rados::PoolCollection do
 
     it "should return true if the pool was destroyed" do
       @pools.destroy(@new_pool_name).should == true
-      @pools.find(@new_pool_name).should == nil
+      @pools.find_by_name(@new_pool_name).should == nil
     end
 
     it "should raise an error if the pool doesn't exist" do
