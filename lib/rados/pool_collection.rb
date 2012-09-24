@@ -35,7 +35,6 @@ module Rados
     end
 
     def create(options)
-      options = { :name => options } if options.is_a? String
       name = options[:name]
       if exists?(name)
         raise Rados::ErrorCreatingPool, "pool #{name} already exists"
