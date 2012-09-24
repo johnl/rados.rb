@@ -10,6 +10,10 @@ extern VALUE mRados, cRadosError;
   rados_cluster_wrapper *wrapper; \
   Data_Get_Struct(self, rados_cluster_wrapper, wrapper)
 
+struct nogvl_pool_stat_args {
+	rados_ioctx_t *ioctx;
+	struct rados_pool_stat_t *stats;
+};
 
 static void rb_rados_cluster_mark(void * wrapper) {
   rados_cluster_wrapper * w = wrapper;
@@ -157,6 +161,11 @@ static VALUE rb_rados_cluster_pool_delete(VALUE self, VALUE pool_name) {
 	return Qtrue;
 }
 
+static VALUE nogvl_pool_stat(void *ptr) {
+  struct nogvl_pool_stat_args *args = ptr;
+	return (VALUE)rados_ioctx_pool_stat(*args->ioctx, args->stats);
+}
+
 static VALUE rb_rados_cluster_pool_stat(VALUE self, VALUE pool_name) {
 	GET_CLUSTER(self);
 	int err;
@@ -165,11 +174,15 @@ static VALUE rb_rados_cluster_pool_stat(VALUE self, VALUE pool_name) {
 	rados_ioctx_t ioctx;
 	struct rados_pool_stat_t stats;
 	VALUE h;
+	struct nogvl_pool_stat_args args;
+
 	err = rados_ioctx_create(*wrapper->cluster, cpool_name, &ioctx);
 	if (err < 0) {
 		rb_raise(rb_const_get(mRados, rb_intern("Error")), "error creating context for pool '%s': %s", cpool_name, strerror(-err));
 	}
-	err = rados_ioctx_pool_stat(ioctx, &stats);
+	args.ioctx = &ioctx;
+	args.stats = &stats;
+	err = (int)rb_thread_blocking_region(nogvl_pool_stat, &args, NULL, NULL);
 	if (err < 0) {
 		rados_ioctx_destroy(ioctx);
 		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error getting pool stats for pool '%s': %s", cpool_name, strerror(-err));
