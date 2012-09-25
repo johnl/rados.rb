@@ -10,6 +10,10 @@ extern VALUE mRados, cRadosError;
   rados_cluster_wrapper *wrapper; \
   Data_Get_Struct(self, rados_cluster_wrapper, wrapper)
 
+/*
+ * used to pass arguments to nogvl_pool_stat while inside
+ * rb_thread_blocking_region
+ */
 struct nogvl_pool_stat_args {
 	rados_ioctx_t *ioctx;
 	struct rados_pool_stat_t *stats;
@@ -70,9 +74,15 @@ static VALUE initialize_ext(VALUE self) {
 	}
 	// FIXME: should release global lock
 	err = rados_connect(*wrapper->cluster);
-	if (err < 0) {
+	switch (err) {
+	case 0:
+		break;
+	case -110:
+		rb_raise(rb_const_get(mRados, rb_intern("ConnectionTimeout")), "%s", strerror(-err));
+	default:
 		rb_raise(cRadosError, "cannot connect: %s", strerror(-err));
 	}
+
 	wrapper->connected = 1;
 	return self;
 }
@@ -153,9 +163,12 @@ static VALUE rb_rados_cluster_pool_delete(VALUE self, VALUE pool_name) {
 	Check_Type(pool_name, T_STRING);
 	char *cpool_name = StringValuePtr(pool_name);
 	err = rados_pool_delete(*wrapper->cluster, cpool_name);
-	if (err == -2) {
+	switch (err) {
+	case 0:
+		break;
+	case -2:
 		rb_raise(rb_const_get(mRados, rb_intern("PoolNotFound")), "%s", cpool_name);
-	} else if (err < 0) {
+	default:
 		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error deleting pool '%s': %s", cpool_name, strerror(-err));
 	}
 	return Qtrue;
@@ -183,11 +196,10 @@ static VALUE rb_rados_cluster_pool_stat(VALUE self, VALUE pool_name) {
 	args.ioctx = &ioctx;
 	args.stats = &stats;
 	err = (int)rb_thread_blocking_region(nogvl_pool_stat, &args, NULL, NULL);
+	rados_ioctx_destroy(ioctx);
 	if (err < 0) {
-		rados_ioctx_destroy(ioctx);
 		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error getting pool stats for pool '%s': %s", cpool_name, strerror(-err));
 	}
-	rados_ioctx_destroy(ioctx);
 
 	h = rb_hash_new();
 	rb_hash_aset(h, ID2SYM(rb_intern("num_objects")), INT2NUM(stats.num_objects));

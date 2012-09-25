@@ -1,4 +1,5 @@
 module Rados
+  class ConnectionTimeout < Error ; end
 
   # Cluster represents a connection to a Ceph cluster
   class Cluster
