@@ -74,7 +74,7 @@ describe Rados::Cluster do
     end
   end
 
-  describe "stats" do
+  describe "#stats" do
     before(:all) do
       @stats = @cluster.stats
     end
@@ -94,7 +94,7 @@ describe Rados::Cluster do
     end
   end
 
-  describe "pool_stat" do
+  describe "#pool_stat" do
     before(:all) do
       @valid_pool_name = @cluster.pool_list.first
       @stats = @cluster.pool_stat(@valid_pool_name)
@@ -114,6 +114,15 @@ describe Rados::Cluster do
        :num_rd_kb, :num_wr, :num_wr_kb].each do |k|
         @stats.keys.should include k
       end
+    end
+  end
+
+  describe "#pool_objects_each" do
+    it "should" do
+      object_names = []
+      @cluster.pool_objects_each("test") { |o| object_names << o }
+      object_names.each { |o| o.should be_a String }
+      object_names.size.should > 2
     end
   end
 end

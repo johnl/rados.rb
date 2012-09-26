@@ -174,6 +174,42 @@ static VALUE rb_rados_cluster_pool_delete(VALUE self, VALUE pool_name) {
 	return Qtrue;
 }
 
+static VALUE rb_rados_cluster_pool_objects_each(VALUE self, VALUE pool_name) {
+	GET_CLUSTER(self);
+	int err;
+	Check_Type(pool_name, T_STRING);
+	char *cpool_name = StringValuePtr(pool_name);
+	rados_ioctx_t ioctx;
+	rados_list_ctx_t lctx;
+
+	err = rados_ioctx_create(*wrapper->cluster, cpool_name, &ioctx);
+	if (err < 0) {
+		rb_raise(rb_const_get(mRados, rb_intern("Error")), "error creating context for pool '%s': %s", cpool_name, strerror(-err));
+	}
+	err = rados_objects_list_open(ioctx, &lctx);
+	if (err < 0) {
+		rados_ioctx_destroy(ioctx);
+		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error listing objects for pool '%s': %s", cpool_name, strerror(-err));
+	}
+  const char *oid;
+	for (;;) {
+		err = rados_objects_list_next(lctx, &oid, NULL);
+		if (err == 0) {
+			rb_yield(rb_str_new2(oid));
+			// don't need to free oid, Ruby GC handles that from here on.
+		} else if (err == -ENOENT) {
+			break;
+		} else {
+			rados_ioctx_destroy(ioctx);
+			rados_objects_list_close(lctx);
+			rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error listing objects for pool '%s': %s", cpool_name, strerror(-err));
+		}
+	}
+	rados_objects_list_close(lctx);
+	rados_ioctx_destroy(ioctx);
+	return Qtrue;
+}	
+
 static VALUE nogvl_pool_stat(void *ptr) {
   struct nogvl_pool_stat_args *args = ptr;
 	return (VALUE)rados_ioctx_pool_stat(*args->ioctx, args->stats);
@@ -227,4 +263,5 @@ void init_rados_cluster() {
 	rb_define_method(cRadosCluster, "pool_create", rb_rados_cluster_pool_create, 1);
 	rb_define_method(cRadosCluster, "pool_delete", rb_rados_cluster_pool_delete, 1);
 	rb_define_method(cRadosCluster, "pool_stat", rb_rados_cluster_pool_stat, 1);
+	rb_define_method(cRadosCluster, "pool_objects_each", rb_rados_cluster_pool_objects_each, 1);
 }
