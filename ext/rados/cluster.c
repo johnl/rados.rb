@@ -19,12 +19,16 @@ struct nogvl_pool_stat_args {
 	struct rados_pool_stat_t *stats;
 };
 
+/*
+ * used to pass arguments to nogvl_objects_list_next_batch while
+ * inside rb_thread_blocking_region
+ */
+#define OBJECT_LIST_BATCH_SIZE 1000
 struct nogvl_objects_list_args {
-	rados_ioctx_t *ioctx;
-	rados_list_ctx_t *lctx;
-	const char **oid;
+	rados_ioctx_t ioctx;
+	rados_list_ctx_t lctx;
+	const char *oids[OBJECT_LIST_BATCH_SIZE];
 };
-
 
 static void rb_rados_cluster_mark(void * wrapper) {
   rados_cluster_wrapper * w = wrapper;
@@ -181,50 +185,64 @@ static VALUE rb_rados_cluster_pool_delete(VALUE self, VALUE pool_name) {
 	return Qtrue;
 }
 
-static VALUE nogvl_objects_list_next(void *ptr) {
+/* 
+ * Get a the next batch of oids, outside of the gvl.
+ * the oids array it returns is NULL terminated.
+ */
+static VALUE nogvl_objects_list_next_batch(void *ptr) {
 	struct nogvl_objects_list_args *args = ptr;
-	return (VALUE)rados_objects_list_next(*args->lctx, args->oid, NULL);
+	int i, err;
+	const char *oid;
+	memset(args->oids, 0, sizeof(args->oids));
+	for (i = 0; i < OBJECT_LIST_BATCH_SIZE-1; i++) {
+		err = rados_objects_list_next(args->lctx, &oid, NULL);
+		if (err == 0) {
+			args->oids[i] = oid;
+		} else if (err < 0) {
+			return (VALUE)err;
+		}
+	}
+	return 0;
 }
-
 
 static VALUE rb_rados_cluster_pool_objects_each(VALUE self, VALUE pool_name) {
 	GET_CLUSTER(self);
-	int err;
+	int err, i;
 	Check_Type(pool_name, T_STRING);
 	char *cpool_name = StringValuePtr(pool_name);
-	rados_ioctx_t ioctx;
-	rados_list_ctx_t lctx;
-	struct nogvl_objects_list_args args;
+	// Seems like assuming malloc succeeded is all the rage
+	struct nogvl_objects_list_args *args = xmalloc(sizeof(struct nogvl_objects_list_args));
 
-	err = rados_ioctx_create(*wrapper->cluster, cpool_name, &ioctx);
+	err = rados_ioctx_create(*wrapper->cluster, cpool_name, &args->ioctx);
 	if (err < 0) {
+		xfree(args);
 		rb_raise(rb_const_get(mRados, rb_intern("Error")), "error creating context for pool '%s': %s", cpool_name, strerror(-err));
 	}
-	args.ioctx = &ioctx;
-	args.lctx = &lctx;
-	err = rados_objects_list_open(ioctx, &lctx);
+	err = rados_objects_list_open(args->ioctx, &args->lctx);
 	if (err < 0) {
-		rados_ioctx_destroy(ioctx);
+		rados_ioctx_destroy(args->ioctx);
+		xfree(args);
 		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error listing objects for pool '%s': %s", cpool_name, strerror(-err));
 	}
-  const char *oid;
-	args.oid = &oid;
 	for (;;) {
-		err = (int)rb_thread_blocking_region(nogvl_objects_list_next, &args, NULL, NULL);
-
-		if (err == 0) {
-			rb_yield(rb_str_new2(oid));
-			// don't need to free oid, Ruby GC handles that from here on.
-		} else if (err == -ENOENT) {
+		err = (int)rb_thread_blocking_region(nogvl_objects_list_next_batch, args, NULL, NULL);
+		for (i = 0; ; i++) {
+			if (args->oids[i] == NULL)
+				break;
+			rb_yield(rb_str_new2(args->oids[i]));
+		}
+		if (err == -ENOENT)
 			break;
-		} else {
-			rados_ioctx_destroy(ioctx);
-			rados_objects_list_close(lctx);
+		if (err < 0) {
+			rados_ioctx_destroy(args->ioctx);
+			rados_objects_list_close(args->lctx);
+			xfree(args);
 			rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error listing objects for pool '%s': %s", cpool_name, strerror(-err));
 		}
 	}
-	rados_objects_list_close(lctx);
-	rados_ioctx_destroy(ioctx);
+	rados_objects_list_close(args->lctx);
+	rados_ioctx_destroy(args->ioctx);
+	xfree(args);
 	return Qtrue;
 }	
 
