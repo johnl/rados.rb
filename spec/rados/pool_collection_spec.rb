@@ -2,22 +2,29 @@
 require 'spec_helper'
 
 describe Rados::PoolCollection do
-  before(:all) do
-    @cluster = Rados::Cluster.new
-		@pools = @cluster.pools
-    @pool_list = @cluster.pool_list
+  before(:each) do
+    @cluster = double("cluster")
+    @pool_list = %w{pool1 pool2 pool3 pool4 pool5 pool6}
+    @new_pool_name = "newpool"
+    @existing_pool_name = "pool1"
+    @cluster.stub(:pool_list).and_return(@pool_list)
+    @cluster.stub(:pool_lookup) do |arg|
+      raise Rados::PoolNotFound if arg == @new_pool_name
+      99
+    end
+    @pool_collection = Rados::PoolCollection.new(@cluster)
   end
 
   describe "#count" do
     it "should return the number of pools that exist" do
-      @pools.count.should == @pool_list.size
+      @pool_collection.count.should == @pool_list.size
     end
   end
 
   describe "#all" do
     it "should return an instance of Pool for each pool" do
-      @pools.all.size.should == @pool_list.size
-      @pools.all.each do |pool|
+      @pool_collection.all.size.should == @pool_list.size
+      @pool_collection.all.each do |pool|
         pool.should be_a Rados::Pool
         @pool_list.should include pool.name
       end
@@ -27,46 +34,35 @@ describe Rados::PoolCollection do
   describe "#each" do
     it "should execute the given block for each pool that exists" do
       pl = []
-      @pools.each { |p| pl << p.name }
+      @pool_collection.each { |p| pl << p.name }
       pl.should == @pool_list
     end
   end
 
   describe "#create" do
-    before(:all) do
-      @new_pool_name = "ruby_rados_test_#{rand(0xfffff)}"
-    end
-    after(:all) do
-      @cluster.pool_delete(@new_pool_name)
-    end
-
     it "should return a Pool instance for the newly created pool" do
-      pool = @pools.create(:name => @new_pool_name)
+      @cluster.should_receive(:pool_create).with(@new_pool_name).and_return(true)
+      pool = @pool_collection.create(:name => @new_pool_name)
       pool.should be_a Rados::Pool
       pool.name.should == @new_pool_name
-      pool.id.should_not be_nil
       pool.cluster.should == @cluster
     end
 
     it "should raise an error if the pool already exists" do
-      lambda { @pools.create(:name => @new_pool_name) }.should raise_error(Rados::ErrorCreatingPool)
+      lambda { @pool_collection.create(:name => @existing_pool_name) }.should raise_error(Rados::ErrorCreatingPool)
     end
   end
 
   describe "#destroy" do
-    before(:all) do
-      @new_pool_name = "ruby_rados_test_#{rand(0xfffff)}"
-      @cluster.pool_create(@new_pool_name)
-    end
-
     it "should return true if the pool was destroyed" do
-      @pools.destroy(@new_pool_name).should == true
-      @pools.find_by_name(@new_pool_name).should == nil
+      @cluster.should_receive(:pool_delete).with(@existing_pool_name).and_return(true)
+      @pool_collection.destroy(@existing_pool_name).should == true
     end
 
     it "should raise an error if the pool doesn't exist" do
+      @cluster.should_receive(:pool_delete).with(@new_pool_name).and_raise(Rados::PoolNotFound)
       lambda { 
-        @pools.destroy("this_pool_should_not_exist")
+        @pool_collection.destroy(@new_pool_name)
       }.should raise_error(Rados::PoolNotFound)
     end
 

@@ -40,7 +40,7 @@ module Rados
         raise Rados::ErrorCreatingPool, "pool #{name} already exists"
       end
       @cluster.pool_create(name)
-      find_by_name(name)
+      Pool.new(:cluster => @cluster, :name => name)
     end
 
     def destroy(name)

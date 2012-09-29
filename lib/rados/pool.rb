@@ -21,5 +21,9 @@ module Rados
     def destroy
       @cluster.pool_delete(name)
     end
+
+    def stat
+      @cluster.pool_stat(name)
+    end
   end
 end
