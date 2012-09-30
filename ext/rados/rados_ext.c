@@ -8,4 +8,5 @@ void Init_rados() {
 	cRadosError = rb_const_get(mRados, rb_intern("Error"));
 
 	init_rados_cluster();
+	init_rados_io_context();
 }
