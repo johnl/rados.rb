@@ -31,17 +31,16 @@ struct nogvl_objects_list_args {
 };
 
 static void rb_rados_cluster_mark(void * wrapper) {
-  rados_cluster_wrapper * w = wrapper;
+	/*  rados_cluster_wrapper * w = wrapper;
   if (w) {
     rb_gc_mark(w->active_thread);
-  }
+		} */
 }
 
 static VALUE nogvl_close(void *ptr) {
   rados_cluster_wrapper *wrapper;
   wrapper = ptr;
   if (wrapper->connected) {
-    wrapper->active_thread = Qnil;
     wrapper->connected = 0;
 		// FIXME: need rados_aio_flush() on all open contexts first
 		rados_shutdown(*wrapper->cluster);
@@ -62,7 +61,6 @@ static VALUE allocate(VALUE klass) {
   VALUE obj;
   rados_cluster_wrapper * wrapper;
   obj = Data_Make_Struct(klass, rados_cluster_wrapper, rb_rados_cluster_mark, rb_rados_cluster_free, wrapper);
-  wrapper->active_thread = Qnil;
   wrapper->connected = 0; // means that a database connection is open
   wrapper->initialized = 0; // means that that the wrapper is initialized
 	wrapper->cluster = (rados_t*)xmalloc(sizeof(rados_t));
