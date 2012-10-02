@@ -61,10 +61,16 @@ VALUE rb_rados_ioctx_get_id(VALUE self) {
 	return INT2NUM(id);
 }
 
+VALUE rb_rados_ioctx_pool_stat(VALUE self) {
+	GET_IOCTX(self);
+	return rb_funcall(wrapper->cluster, rb_intern("pool_stat"), 2, Qnil, self);
+}
+
 
 void init_rados_io_context() {
 	cRadosIoContext = rb_define_class_under(mRados, "IoContext", rb_cObject);
 	rb_define_alloc_func(cRadosIoContext, allocate);
 	rb_define_method(cRadosIoContext, "initialize", rb_rados_ioctx_initialize, 2);
 	rb_define_method(cRadosIoContext, "get_id", rb_rados_ioctx_get_id, 0);
+	rb_define_method(cRadosIoContext, "pool_stat", rb_rados_ioctx_pool_stat, 0);
 }

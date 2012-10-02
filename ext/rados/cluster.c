@@ -249,26 +249,40 @@ static VALUE nogvl_pool_stat(void *ptr) {
 	return (VALUE)rados_ioctx_pool_stat(*args->ioctx, args->stats);
 }
 
-static VALUE rb_rados_cluster_pool_stat(VALUE self, VALUE pool_name) {
+static VALUE rb_rados_cluster_pool_stat(VALUE self, VALUE pool_name, VALUE io_context) {
 	GET_CLUSTER(self);
 	int err;
-	Check_Type(pool_name, T_STRING);
-	char *cpool_name = StringValuePtr(pool_name);
-	rados_ioctx_t ioctx;
+	rados_ioctx_t *ioctx;
 	struct rados_pool_stat_t stats;
 	VALUE h;
 	struct nogvl_pool_stat_args args;
-
-	err = rados_ioctx_create(*wrapper->cluster, cpool_name, &ioctx);
-	if (err < 0) {
-		rb_raise(rb_const_get(mRados, rb_intern("Error")), "error creating context for pool '%s': %s", cpool_name, strerror(-err));
+	
+	// Setup our own ioctx if necessary
+	if (io_context == Qnil) {
+		Check_Type(pool_name, T_STRING);
+		char *cpool_name = StringValuePtr(pool_name);
+		ioctx = xmalloc(sizeof(rados_ioctx_t));
+		err = rados_ioctx_create(*wrapper->cluster, cpool_name, ioctx);
+		if (err < 0) {
+			xfree(ioctx);
+			rb_raise(rb_const_get(mRados, rb_intern("Error")), "error creating context for pool '%s': %s", cpool_name, strerror(-err));
+		}
+	} else {
+		// Find the ioctx from the given IoContext instance instead
+		// FIXME: Check to see if it's the right type
+		rados_ioctx_wrapper *ioctxwrapper;
+		Data_Get_Struct(io_context, rados_ioctx_wrapper, ioctxwrapper);
+		ioctx = ioctxwrapper->ioctx;
 	}
-	args.ioctx = &ioctx;
+	args.ioctx = ioctx;
 	args.stats = &stats;
 	err = (int)rb_thread_blocking_region(nogvl_pool_stat, &args, NULL, NULL);
-	rados_ioctx_destroy(ioctx);
+	if (io_context == Qnil) {
+		rados_ioctx_destroy(*ioctx);
+		// rados_ioctx_destroy handles freeing
+	}
 	if (err < 0) {
-		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error getting pool stats for pool '%s': %s", cpool_name, strerror(-err));
+		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error getting pool stats for pool: %s", strerror(-err));
 	}
 
 	h = rb_hash_new();
@@ -296,6 +310,6 @@ void init_rados_cluster() {
 	rb_define_method(cRadosCluster, "pool_lookup", rb_rados_cluster_pool_lookup, 1);
 	rb_define_method(cRadosCluster, "pool_create", rb_rados_cluster_pool_create, 1);
 	rb_define_method(cRadosCluster, "pool_delete", rb_rados_cluster_pool_delete, 1);
-	rb_define_method(cRadosCluster, "pool_stat", rb_rados_cluster_pool_stat, 1);
+	rb_define_method(cRadosCluster, "pool_stat", rb_rados_cluster_pool_stat, 2);
 	rb_define_method(cRadosCluster, "pool_objects_each", rb_rados_cluster_pool_objects_each, 1);
 }

@@ -15,4 +15,12 @@ describe Rados::IoContext do
       Rados::IoContext.new(@cluster, "data").get_id.should == @cluster.pool_lookup("data")
     end
   end
+
+  describe "#pool_stat" do
+    it "should return a hash containing symbols and fixnums" do
+      ioctx = Rados::IoContext.new(@cluster, "data")
+      @cluster.should_receive(:pool_stat).with(nil, ioctx)
+      ioctx.pool_stat
+    end
+  end
 end
