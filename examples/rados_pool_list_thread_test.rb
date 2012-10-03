@@ -4,9 +4,10 @@ cluster = Rados::Cluster.new
 puts cluster.stats.inspect
 
 statter = Thread.new do
+  ioctxes = cluster.pools.collect { |p| p.new_io_context }
   while (true)
-    cluster.pools.each do |pool|
-      cluster.pool_stat(pool.name)
+    ioctxes.each do |ioctx|
+      ioctx.pool_stat
       STDOUT.write("o")
     end
   end

@@ -11,6 +11,15 @@ extern VALUE mRados, cRadosError;
   rados_ioctx_wrapper *wrapper; \
   Data_Get_Struct(self, rados_ioctx_wrapper, wrapper)
 
+/*
+ * used to pass arguments to nogvl_pool_stat while inside
+ * rb_thread_blocking_region
+ */
+struct nogvl_pool_stat_args {
+	rados_ioctx_t *ioctx;
+	struct rados_pool_stat_t *stats;
+};
+
 static void rb_rados_ioctx_mark(void *wrapper) {
 	rados_ioctx_wrapper *w = wrapper;
 	if (w) {
@@ -24,7 +33,6 @@ static void rb_rados_ioctx_free(void * ptr) {
 	// rados_ioctx_destroy apparently handles freeing :/
 	//	xfree(ptr);
 }
-
 
 static VALUE allocate(VALUE klass) {
 	VALUE obj;
@@ -61,11 +69,41 @@ VALUE rb_rados_ioctx_get_id(VALUE self) {
 	return INT2NUM(id);
 }
 
-VALUE rb_rados_ioctx_pool_stat(VALUE self) {
-	GET_IOCTX(self);
-	return rb_funcall(wrapper->cluster, rb_intern("pool_stat"), 2, Qnil, self);
+static VALUE nogvl_pool_stat(void *ptr) {
+  struct nogvl_pool_stat_args *args = ptr;
+	return (VALUE)rados_ioctx_pool_stat(*args->ioctx, args->stats);
 }
 
+static VALUE rb_rados_ioctx_pool_stat(VALUE self) {
+	GET_IOCTX(self);
+	int err;
+	struct rados_pool_stat_t stats;
+	VALUE h;
+	struct nogvl_pool_stat_args args;
+
+	args.ioctx = wrapper->ioctx;
+	args.stats = &stats;
+	err = (int)rb_thread_blocking_region(nogvl_pool_stat, &args, NULL, NULL);
+	if (err < 0) {
+		// FIXME: PoolError?
+		rb_raise(rb_const_get(mRados, rb_intern("PoolError")), "error getting pool stats: %s", strerror(-err));
+	}
+
+	h = rb_hash_new();
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects")), INT2NUM(stats.num_objects));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_bytes")), INT2NUM(stats.num_bytes));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_kb")), INT2NUM(stats.num_kb));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_object_clones")), INT2NUM(stats.num_object_clones));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_object_copies")), INT2NUM(stats.num_object_copies));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects_missing_on_primary")), INT2NUM(stats.num_objects_missing_on_primary));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects_unfound")), INT2NUM(stats.num_objects_unfound));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_objects_degraded")), INT2NUM(stats.num_objects_degraded));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_rd")), INT2NUM(stats.num_rd));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_rd_kb")), INT2NUM(stats.num_rd_kb));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_wr")), INT2NUM(stats.num_wr));
+	rb_hash_aset(h, ID2SYM(rb_intern("num_wr_kb")), INT2NUM(stats.num_wr_kb));
+	return h;
+}
 
 void init_rados_io_context() {
 	cRadosIoContext = rb_define_class_under(mRados, "IoContext", rb_cObject);

@@ -23,7 +23,11 @@ module Rados
     end
 
     def stat
-      @cluster.pool_stat(name)
+      new_io_context.pool_stat
+    end
+
+    def new_io_context
+      IoContext.new(@cluster, name)
     end
   end
 end
