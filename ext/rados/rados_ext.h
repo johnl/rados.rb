@@ -20,6 +20,12 @@ typedef unsigned int    uint;
 #include <ruby/encoding.h>
 #endif
 
+#if defined(__GNUC__) && (__GNUC__ >= 3)
+#define RB_RADOS_UNUSED __attribute__ ((unused))
+#else
+#define RB_RADOS_UNUSED
+#endif
+
 #include <cluster.h>
 #include <io_context.h>
 

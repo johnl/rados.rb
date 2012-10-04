@@ -15,8 +15,8 @@ typedef VALUE rb_blocking_function_t(void *);
 static VALUE
 rb_thread_blocking_region(
   rb_blocking_function_t *func, void *data1,
-  RB_MYSQL_UNUSED rb_unblock_function_t *ubf,
-  RB_MYSQL_UNUSED void *data2)
+  RB_RADOS_UNUSED rb_unblock_function_t *ubf,
+  RB_RADOS_UNUSED void *data2)
 {
   VALUE rv;
 
