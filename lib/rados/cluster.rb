@@ -1,5 +1,8 @@
 module Rados
   class ConnectionTimeout < Error ; end
+  class IOError < Error ; end
+  class WriteError < IOError ; end
+  class ReadError < IOError ; end
 
   # Cluster represents a connection to a Ceph cluster
   class Cluster

@@ -105,10 +105,58 @@ static VALUE rb_rados_ioctx_pool_stat(VALUE self) {
 	return h;
 }
 
+static VALUE rb_rados_ioctx_write(VALUE self, VALUE oid, VALUE buf, VALUE len, VALUE off) {
+	GET_IOCTX(self);
+	int err;
+	char *c_buf;
+	Check_Type(oid, T_STRING);
+	Check_Type(buf, T_STRING);
+	Check_Type(len, T_FIXNUM);
+	Check_Type(off, T_FIXNUM); // FIXME: Bignum?
+	c_buf = StringValuePtr(buf);
+	err = rados_write(*wrapper->ioctx, StringValuePtr(oid), c_buf, FIX2INT(len), FIX2LONG(off));
+	if (err < 0) {
+		rb_raise(rb_const_get(mRados, rb_intern("WriteError")), "error writing %i bytes to oid '%s' at offset %i: %s",
+						 FIX2INT(len), StringValuePtr(oid), FIX2INT(off), strerror(-err));
+	}
+	return INT2FIX(err);
+}
+
+static VALUE rb_rados_ioctx_read(VALUE self, VALUE oid, VALUE len, VALUE off) {
+	GET_IOCTX(self);
+	int err;
+	char *c_buf;
+	VALUE buf;
+	Check_Type(oid, T_STRING);
+	Check_Type(len, T_FIXNUM);
+	Check_Type(off, T_FIXNUM); // FIXME: Bignum?
+	c_buf = xmalloc(len);
+	err = rados_read(*wrapper->ioctx, StringValuePtr(oid), c_buf, FIX2INT(len), FIX2LONG(off));
+	if (err < 0) {
+		xfree(c_buf);
+		rb_raise(rb_const_get(mRados, rb_intern("ReadError")), "error reading %i bytes from oid '%s' at offset %li: %s",
+						 FIX2INT(len), StringValuePtr(oid), FIX2LONG(off), strerror(-err));
+	}
+	buf = rb_str_new(c_buf, err);
+	xfree(c_buf);
+	return buf;
+}
+
+static VALUE rb_rados_ioctx_open(VALUE self, VALUE oid) {
+	VALUE argv[2];
+	argv[1] = self;
+	argv[0] = oid;
+	return rb_class_new_instance(2, argv, rb_const_get(mRados, rb_intern("RObject")));
+}
+
+
 void init_rados_io_context() {
 	cRadosIoContext = rb_define_class_under(mRados, "IoContext", rb_cObject);
 	rb_define_alloc_func(cRadosIoContext, allocate);
 	rb_define_method(cRadosIoContext, "initialize", rb_rados_ioctx_initialize, 2);
 	rb_define_method(cRadosIoContext, "get_id", rb_rados_ioctx_get_id, 0);
 	rb_define_method(cRadosIoContext, "pool_stat", rb_rados_ioctx_pool_stat, 0);
+	rb_define_method(cRadosIoContext, "write", rb_rados_ioctx_write, 4);
+	rb_define_method(cRadosIoContext, "read", rb_rados_ioctx_read, 3);
+	rb_define_method(cRadosIoContext, "open", rb_rados_ioctx_open, 1);
 }
