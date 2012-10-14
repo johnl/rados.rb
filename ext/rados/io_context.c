@@ -20,6 +20,14 @@ struct nogvl_pool_stat_args {
 	struct rados_pool_stat_t *stats;
 };
 
+struct nogvl_iop_args {
+	rados_ioctx_t *ioctx;
+	char *oid;
+	char *buf;
+	long int len, offset; // FIXME: right size int?
+	struct rados_pool_stat_t *stats;
+};
+
 static void rb_rados_ioctx_mark(void *wrapper) {
 	rados_ioctx_wrapper *w = wrapper;
 	if (w) {
@@ -105,40 +113,58 @@ static VALUE rb_rados_ioctx_pool_stat(VALUE self) {
 	return h;
 }
 
+static VALUE nogvl_ioctx_write(void *ptr) {
+  struct nogvl_iop_args *args = ptr;
+	return (VALUE)rados_write(*args->ioctx, args->oid, args->buf, args->len, args->offset);
+}
+
 static VALUE rb_rados_ioctx_write(VALUE self, VALUE oid, VALUE buf, VALUE len, VALUE off) {
 	GET_IOCTX(self);
 	int err;
-	char *c_buf;
+	struct nogvl_iop_args args;
 	Check_Type(oid, T_STRING);
 	Check_Type(buf, T_STRING);
 	Check_Type(len, T_FIXNUM);
 	Check_Type(off, T_FIXNUM); // FIXME: Bignum?
-	c_buf = StringValuePtr(buf);
-	err = rados_write(*wrapper->ioctx, StringValuePtr(oid), c_buf, FIX2INT(len), FIX2LONG(off));
+	args.ioctx = wrapper->ioctx;
+	args.buf = StringValuePtr(buf); // FIXME: Ok to use result of StringValuePtr outside of gvl?
+	args.oid = StringValuePtr(oid); // FIXME: Here too?
+	args.len = FIX2INT(len);
+	args.offset = FIX2LONG(off);
+	err = (int)rb_thread_blocking_region(nogvl_ioctx_write, &args, NULL, NULL);
 	if (err < 0) {
-		rb_raise(rb_const_get(mRados, rb_intern("WriteError")), "error writing %i bytes to oid '%s' at offset %i: %s",
-						 FIX2INT(len), StringValuePtr(oid), FIX2INT(off), strerror(-err));
+		rb_raise(rb_const_get(mRados, rb_intern("WriteError")), "error writing %li bytes to oid '%s' at offset %li: %s",
+						 args.len, args.oid, args.offset, strerror(-err));
 	}
 	return INT2FIX(err);
+}
+
+static VALUE nogvl_ioctx_read(void *ptr) {
+  struct nogvl_iop_args *args = ptr;
+	return (VALUE)rados_read(*args->ioctx, args->oid, args->buf, args->len, args->offset);
 }
 
 static VALUE rb_rados_ioctx_read(VALUE self, VALUE oid, VALUE len, VALUE off) {
 	GET_IOCTX(self);
 	int err;
-	char *c_buf;
 	VALUE buf;
+	struct nogvl_iop_args args;
 	Check_Type(oid, T_STRING);
 	Check_Type(len, T_FIXNUM);
 	Check_Type(off, T_FIXNUM); // FIXME: Bignum?
-	c_buf = xmalloc(len);
-	err = rados_read(*wrapper->ioctx, StringValuePtr(oid), c_buf, FIX2INT(len), FIX2LONG(off));
+	args.ioctx = wrapper->ioctx;
+	args.buf = xmalloc(len);
+	args.oid = StringValuePtr(oid); // FIXME: Ok to use outside of gvl?
+	args.len = FIX2INT(len);
+	args.offset = FIX2LONG(off);
+	err = (int)rb_thread_blocking_region(nogvl_ioctx_read, &args, NULL, NULL);
 	if (err < 0) {
-		xfree(c_buf);
-		rb_raise(rb_const_get(mRados, rb_intern("ReadError")), "error reading %i bytes from oid '%s' at offset %li: %s",
-						 FIX2INT(len), StringValuePtr(oid), FIX2LONG(off), strerror(-err));
+		xfree(args.buf);
+		rb_raise(rb_const_get(mRados, rb_intern("ReadError")), "error reading %li bytes from oid '%s' at offset %li: %s",
+						 args.len, args.oid, args.offset, strerror(-err));
 	}
-	buf = rb_str_new(c_buf, err);
-	xfree(c_buf);
+	buf = rb_str_new(args.buf, err);
+	xfree(args.buf);
 	return buf;
 }
 
